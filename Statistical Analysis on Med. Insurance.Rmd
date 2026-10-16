@@ -1,0 +1,400 @@
+---
+title: "Statistical Analysis for Medical Insurance"
+author: "Madison"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+installing packages
+``` {r}
+# install.packages('readr')
+# install.packages('corrplot')
+# install.packages('car')
+# install.packages('lmtest')
+# install.packages('mgcv')
+```
+
+loading the data and getting preliminary view
+``` {r}
+library(readr)
+insurance <- read.csv("insurance.csv")
+head(insurance)
+str(insurance)
+```
+
+making these predictors into categorical factors
+``` {r}
+insurance$sex <- factor(insurance$sex, levels=c('male', 'female'), labels=c('Male', 'Female'))
+insurance$smoker <- factor(insurance$smoker, levels=c('no', 'yes'), labels=c("No", "Yes"))
+insurance$region <- factor(insurance$region, levels=c('northeast', 'southeast', 'southwest', 'northwest'), labels=c('NE', 'SE', 'SW', 'NW'))
+```
+
+creating the bmi_smoker variable
+``` {r}
+insurance$bmi_smoker <- 0
+for (i in 1:1338) {
+  if (insurance$smoker[i] == 'No') {
+    insurance$bmi_smoker[i] <- 0 # non-smokers
+  }
+  else {
+    if (insurance$bmi[i] < 25) {
+      insurance$bmi_smoker[i] <- 1 # smokers with normal bmi
+    }
+    else if (insurance$bmi[i] < 30) {
+      insurance$bmi_smoker[i] <- 2 # overweight smokers
+    }
+    else {
+      insurance$bmi_smoker[i] <- 3 # obese smokers
+    }
+  }
+}
+insurance$bmi_smoker <- factor(insurance$bmi_smoker,
+                               levels = 0:3,
+                               labels = c('Non-smokers', 'Normal BMI Smokers',
+                                          'Overweight Smokers','Obese Smokers'))
+```
+
+checking for missing data... there are no missing values
+``` {r}
+colSums(is.na(insurance))
+```
+
+distributions of the independent variables.
+``` {r}
+par(mfrow = c(1,3))
+hist(insurance$age, col = 'paleturquoise1',
+     main = 'Age Distribution', 
+     xlab = 'Age',
+     ylab = 'Frequency')
+hist(insurance$bmi, col = 'pink',
+     main = 'BMI Distribution',
+     xlab = 'BMI',
+     ylab = 'Frequency'
+     )
+barplot(table(insurance$smoker),
+        col = 'aquamarine3',
+        main = 'Distribution of Smoking Status',
+        xlab = 'Smoking Status',
+        ylab = 'Frequency')
+barplot(table(insurance$region),
+        col = 'cadetblue1',
+        main = 'Distribution of Region',
+        xlab = 'Regions',
+        ylab = 'Frequency')
+barplot(table(insurance$sex),
+        col = 'darkorchid2',
+        main = 'Distribution of Sex',
+        xlab = 'Sexes',
+        ylab = 'Frequency')
+barplot(table(insurance$children),
+        main = 'Distribution of Number of Children',
+        xlab = 'Number of Children',
+        ylab = 'Frequency',
+        col = 'darkseagreen2')
+```
+
+distribution of charges
+``` {r}
+par(mfrow = c(1,2))
+plot(density(insurance$charges, na.rm = TRUE), 
+     main = 'Density of Charges',
+     xlab = 'Charges',
+     ylab = 'Density',
+     col = 'skyblue')
+hist(insurance$charges,
+     main = 'Distribution of Charges',
+     xlab = 'Charges',
+     ylab = 'Frequency',
+     col = 'skyblue')
+```
+
+normalizing charges by taking a log of it, and the subsequent plots
+``` {r}
+par(mfrow = c(1,2))
+insurance$logcharges <- log(insurance$charges)
+plot(density(insurance$logcharges, na.rm = TRUE),
+     main = 'Density of Log(Charges)',
+     xlab = 'Log(Charges)',
+     ylab = 'Density',
+     col = 'plum3',
+     lwd = 2)
+hist(insurance$logcharges,
+    col = 'plum3',
+    main = 'Distribution of Log(Charges)',
+    xlab = 'Log(Charges)',
+    ylab = 'Frequency')
+```
+
+Log(Charges)
+``` {r}
+par(mfrow = c(1,1))
+plot(logcharges ~ age, data = insurance,
+     xlab = 'Age',
+     ylab = 'Log(Charges)',
+     main = 'Log(Charges) vs Age',
+     pch = 20,
+     col = c('forestgreen','gold','darkorange','firebrick') 
+     [as.numeric(insurance$bmi_smoker)])
+legend("bottomright",
+       title = 'BMI-Smoker Groups',
+       legend = levels(insurance$bmi_smoker),
+       col = c('forestgreen','gold','darkorange','firebrick'),
+       pch = 20)
+plot(logcharges ~ bmi, data = insurance,
+     xlab = 'BMI',
+     ylab = 'Log(Charges)',
+     main = 'Log(Charges) vs BMI',
+     pch = 20,
+     col = c('forestgreen', 'firebrick') [as.numeric(insurance$smoker)])
+legend('right',
+       title = 'Smoking Status',
+       legend = levels(insurance$smoker),
+       col = c('forestgreen', 'firebrick'),
+       pch = 20)
+```
+
+boxplots to show log(Charges) vs. categorical variables
+``` {r}
+par(mfrow = c(1,2))
+boxplot(logcharges ~ sex, data = insurance,
+        col = 'thistle1',
+        main = 'Log(Charges) vs. Sex',
+        xlab = 'Sex',
+        ylab = 'Log(Charges)')
+boxplot(logcharges ~ smoker, data = insurance, 
+        col = 'violetred',
+        main = 'Log(Charges) vs. Smoking Status',
+        xlab = 'Smoking Status',
+        ylab = 'Log(Charges)')
+boxplot(logcharges ~ children, data = insurance,
+        col = 'cornflowerblue',
+        main = 'Log(Charges) vs. Num. of Children',
+        xlab = 'Number of Children',
+        ylab = 'Log(Charges)')
+boxplot(logcharges ~ region, data = insurance,
+        col = 'powderblue',
+        main = 'Log(Charges) vs. Region',
+        xlab = 'Region', 
+        ylab = 'Log(Charges)')
+```
+
+Correlation Matrix
+```{r}
+matrix_dataset <- insurance[, c(1,3,4,7,9)]
+corr_matrix <- cor(matrix_dataset)
+library(corrplot)
+corrplot(corr_matrix,
+         method = "color",
+         tl.col = 'black',
+         addCoef.col = "black",
+         col = colorRampPalette(c('blue', 'white', 'red')) (300))
+```
+
+general linear model
+```{r}
+fit <- lm(logcharges ~ age + bmi + smoker, data = insurance)
+summary(fit)
+
+par(mfrow = c(2,2))
+
+# multicolinearity
+library(car)
+vif(fit, type = 'predictor')
+
+# linearity
+plot(fit, which = 1)
+plot(insurance$age, resid(fit),
+     xlab = "Age", 
+     ylab = "Residuals", 
+     main = "Residuals vs. Age")
+lines(lowess(insurance$age, resid(fit)), col = 'red', lwd = 2)
+plot(insurance$bmi, resid(fit),
+     xlab = 'BMI',
+     ylab = 'Residuals',
+     main = 'Residuals vs. BMI')
+lines(lowess(insurance$bmi, resid(fit)), col = 'red', lwd = 2)
+
+# normality
+shapiro.test(fit$residuals)
+plot(fit, which = 2)
+
+# independence
+n = 1338
+plot(head(fit$residuals, n-1), tail(fit$residuals, n-1),
+     xlab = '', ylab = '',
+     title(xlab = expression(e[i]), ylab = expression (e[i])))
+lmtest::dwtest(fit, alternative = 'two.sided')
+
+# homoscedascity
+plot(fit, which = 3)
+lmtest::bptest(fit)
+
+# outliers
+stud = rstudent(fit)
+stud[which.max(abs(stud))]
+abs(qt((.05/1338), 1338-4-1))
+
+# leverage points
+cook <- cooks.distance(fit)
+cook[which(cook > 1)]
+plot(fit, which = 5)
+```
+good R-squared value, with all variables (age, bmi, smoker) significant. VIF values are good. the plots show that it fails linearity, fails normality, passes independence, and fails homoscedascity. there is one outlier, observation 517. there are no statistically influential leverage points 
+
+interaction model
+``` {r}
+fit2 <- lm(logcharges ~ age + bmi + smoker + bmi:smoker + age:smoker,
+           data = insurance)
+summary(fit2)
+
+par(mfrow=c(2,2))
+
+# multicolinearity
+library(car)
+vif(fit2, type = 'predictor')
+
+# linearity
+plot(fit2, which = 1)
+plot(insurance$age, resid(fit2),
+     xlab = 'Age', ylab = 'Residuals', main = 'Residuals vs. Age')
+lines(lowess(insurance$age, resid(fit2)), col = 'red', lwd = 2)
+plot(insurance$bmi, resid(fit2),
+     xlab = 'BMI', ylab = 'Residuals', main = 'Residuals vs. Age')
+lines(lowess(insurance$bmi, resid(fit2)), col = 'red', lwd = 2)
+
+# normality
+shapiro.test(fit2$residuals)
+plot(fit2, which = 2)
+
+# independence
+n = 1338
+plot(head(fit2$residuals, n - 1), tail(fit2$residuals, n - 1),
+          xlab = '', ylab = '')
+title(xlab = expression(e[i]), ylab = expression(e[i]))
+lmtest::dwtest(fit2, alternative = 'two.sided')
+
+# homoscedascity
+plot(fit2, which = 3)
+lmtest::bptest(fit2)
+
+# outliers 
+stud = rstudent(fit2)
+stud[which.max(abs(stud))]
+abs(qt((0.05/1338), 1338 - 9 - 1))
+
+# leverage points
+cook <- cooks.distance(fit2)
+cook[which(cook > 1)]
+plot(fit2, which = 5)
+```
+this interaction model has a better R-squared value (0.7987) than the fit model. bmi is the only non-significant variable. VIF values are good, so there is no multicollinearity. this model passes independence assumptions, but fails linearity, normality, and homoscedascity assumptions. there is the same outlier (observation 517) and still 0 influential leverage points
+
+subset models
+``` {r}
+par(mfrow=c(2,2))
+
+# smoker subset
+fit3 <- lm(logcharges ~ age + bmi, data = subset(insurance, smoker == 'Yes'))
+summary(fit3)
+plot(fit3)
+
+# smoker subset, interaction term
+fit4 <- lm(logcharges ~ age + bmi + age:bmi, data = subset(insurance, smoker == 'Yes'))
+summary(fit4)
+plot(fit4)
+
+# non-smoker subset
+fit5 <- lm(logcharges ~ age + bmi, data = subset(insurance, smoker == 'No'))
+summary(fit5)
+plot(fit5)
+
+# non-smoker subset, interaction term
+fit6 <- lm(logcharges ~ age + bmi + age:bmi, data = subset(insurance, smoker == 'No'))
+summary(fit6)
+plot(fit6)
+```
+none of the subset models passed all model assumptions. however, a notable standout would be the smoker subset because it passes normality and homoscedascity assumptions. the smoker and non-smoker groups form two different functional relationships, and age and BMI have different effects based on smoking status. these issues make it difficult for a single linear model to represent the data accurately. more flexible models might yield better results
+
+GAM model
+``` {r}
+library(mgcv)
+fit_gam <- gam(logcharges~s(age) + s(bmi) + smoker, data = insurance)
+summary(fit_gam)
+
+library(car)
+vif(fit_gam, type = 'predictor')
+
+gam.check(fit_gam)
+plot(fit_gam)
+```
+the R-squared value of the GAM model is 0.752, which is better than the general linear model. all of the variables are significant. the VIF values are good, meaning there is no multicollinearity. this model fails linearity, normality, and homoscedascity, but passes independence. there are 0 influential leverage points
+
+hypothesis testing
+1) true mean difference in log(charges) between smokers and non-smokers
+H0: mean(smokers) = mean(non-smokers)
+H1: mean(smokers) != mean(non-smokers)
+``` {r}
+charges_smoker <- insurance$logcharges[insurance$smoker == 'Yes']
+charges_nonsmoker <- insurance$logcharges[insurance$smoker == 'No']
+
+ttest_result <- t.test(charges_smoker, charges_nonsmoker, alternative = "two.sided", var.equal = FALSE)
+ttest_result
+
+```
+p-value < 2.2e-16, which means we reject the null hypothesis. there is a true mean difference in log(charges) between smokers and non-smokers. 
+
+2) original vs. GAM model
+H0: log(charges) = B0 + B1age + B2bmi + B3smoker
+H1: log(charges) = B0 + f1(age) + f2(bmi) + B3smoker
+``` {r}
+anova(fit, fit_gam)
+```
+the F-value is less than 3.868e-09, which means we reject the null hypothesis. there is at least one smooth term that is nonlinear and significantly improves model fit.
+
+3) original vs. interaction model
+H0: log(charges) = B0 + B1age + B2bmi + B3smoker
+H1: log(charges) = B0 + B1age + B2bmi + B3smoker + B4(age:smoker) + B5(bmi:smoker)
+```{r}
+anova(fit, fit2)
+```
+we reject the null hypothesis because the F-value is less than 2.2e-16. that means at least one interaction term significantly improves model fit.
+
+4) subset models (original vs. interaction)
+for both subsets,
+H0: log(charges) = B0 + B1age + B2bmi
+H1: log(charges) = B0 + B1age + B2bmi + B3(age:bmi)
+``` {r}
+anova(fit3, fit4) # smoker subset
+anova(fit5, fit6) # non-smoker subset
+```
+there is no signficant difference when including interaction term age:bmi in either smoking or non-smoking subsets, meaning the interaction term does not improve the model.
+
+prediction
+we are using the GAM and interaction model for prediction
+```{r}
+set.seed(1)
+n <- nrow(insurance)
+train_idx <- sample(seq_len(n), size = floor(0.8 * n))
+train <- insurance[train_idx, ]
+test  <- insurance[-train_idx, ]
+fit_train <- lm(logcharges ~ age + bmi + smoker + age:smoker + bmi:smoker, data 
+                 = train)
+fit_gam_train <- gam(logcharges ~ s(age) + s(bmi) + smoker, data = train)
+pred_fit <- predict(fit_gam_train, newdata = test)
+pred_gam <- predict(fit_train, newdata = test)
+
+fit_rmse <- sqrt(mean((pred_fit - test$logcharges)^2))
+fit_mae <- mean(abs(pred_fit - test$logcharges))
+fit_gam_rmse <- sqrt(mean((pred_gam - test$logcharges)^2))
+fit_gam_mae <- mean(abs(pred_gam - test$logcharges))
+
+cat('Interaction Model Prediction RMSE:', fit_rmse, '\n')
+cat('Interaction Model Prediction MAE:', fit_mae, '\n')
+cat('GAM Model Prediction RMSE:', fit_gam_rmse, '\n')
+cat('GAM Model Prediction MAE:', fit_gam_mae)
+```
+between the GAM and interaction mode, the GAM model performs better as it has lower RMSE and MAE.
